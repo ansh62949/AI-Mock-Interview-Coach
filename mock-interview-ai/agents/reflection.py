@@ -91,77 +91,65 @@ def run_reflection_agent(state: InterviewState) -> Dict[str, Any]:
         except Exception as err:
             logger.warning(f"Reflection Agent LLM invocation failed: {err}. Using heuristic decision.")
 
-    # Heuristic Fallback Decision Tree
-    has_response = bool(latest_response)
-    lower_res = latest_response.lower()
-    is_negation = has_response and lower_res in ["no", "nope", "na", "no.", "none"]
-    is_idk = has_response and any(p in lower_res for p in ["i don't know", "dont know", "not sure", "idk", "no idea"])
-    is_brief_or_vague = has_response and not (is_negation or is_idk) and (len(latest_response.split()) < 4 or any(p in lower_res for p in ["i'd use an llm", "use an llm", "by using llm", "using llms"]))
+    # Classification State Guided Routing
+    answer_status = latest_evaluation.get("answer_status", "partial")
+    followup_strategy = latest_evaluation.get("followup_strategy", "probe_missing_concept")
+    misconceptions = latest_evaluation.get("misconceptions", [])
+    knowledge_gaps = latest_evaluation.get("knowledge_gaps", [])
 
-    if is_negation or is_idk:
+    if answer_status == "unknown" or followup_strategy == "teach_then_probe":
         if current_probe_count == 0:
             routing_decision: ReflectionDecisionType = "simplify"
-            reasoning = "Candidate responded negatively or stated unfamiliarity. Simplifying question angle."
-            follow_up_goal = "Foundational high-level system concepts."
-            follow_up_type = "simplification"
+            reasoning = "Candidate explicitly stated unfamiliarity (unknown state). Breaking down concept into simpler scenario."
+            follow_up_goal = "Break down concept into simpler conceptual building blocks before probing trade-offs."
+            follow_up_type = "teach_then_probe"
             new_probe_count = 1
         else:
             routing_decision = "next_topic"
-            reasoning = "Candidate struggled on current topic. Moving to next topic to maintain interview momentum."
-            follow_up_goal = "Production monitoring and deployment observability."
+            reasoning = "Candidate unfamiliar on current topic after probe. Transitioning to next technical domain."
+            follow_up_goal = "Production monitoring, system observability, and deployment metrics."
             follow_up_type = "scenario_stress_test"
             new_probe_count = 0
-    elif is_brief_or_vague:
+    elif answer_status == "incorrect" or followup_strategy == "target_misconception":
         if current_probe_count == 0:
             routing_decision = "probe_deeper"
-            reasoning = "Candidate mentioned tool/approach briefly. Probing deeper into specific model selection."
-            follow_up_goal = "Model selection, framework choices, and latency trade-offs."
-            follow_up_type = "deeper_tradeoffs"
+            misc_text = misconceptions[0] if misconceptions else "technical misconception"
+            reasoning = f"Candidate expressed explicit misconception: {misc_text}. Addressing misconception."
+            follow_up_goal = f"Politely address misconception ({misc_text}) and ask targeted question."
+            follow_up_type = "target_misconception"
             new_probe_count = 1
         else:
             routing_decision = "simplify"
-            reasoning = "Candidate answer remained brief. Asking for a concrete real-world example."
-            follow_up_goal = "Practical real-world project example."
+            reasoning = "Targeted misconception probe complete. Asking for concrete foundational example."
+            follow_up_goal = "Concrete foundational example."
             follow_up_type = "real_world_example"
             new_probe_count = 2
-    elif latest_score >= 8:
-        routing_decision = "increase_difficulty"
-        reasoning = f"Candidate scored {latest_score}/10 demonstrating high technical depth."
-        follow_up_goal = "High-concurrency failure modes and 4x latency spike scenario."
-        follow_up_type = "scenario_stress_test"
+    elif answer_status == "off_topic" or followup_strategy == "redirect":
+        routing_decision = "next_topic"
+        reasoning = "Candidate response was off-topic. Redirecting back to target role requirements."
+        follow_up_goal = "Core role technical requirements."
+        follow_up_type = "redirect"
         new_probe_count = 0
-    elif latest_score <= 4:
-        if current_probe_count == 0:
-            routing_decision = "simplify"
-            reasoning = f"Candidate score low ({latest_score}/10). Lowering question complexity."
-            follow_up_goal = "Foundational component responsibilities."
-            follow_up_type = "simplification"
-            new_probe_count = 1
-        else:
-            routing_decision = "next_topic"
-            reasoning = f"Candidate struggled on concept. Transitioning to next key area."
-            follow_up_goal = "System scalability and monitoring."
-            follow_up_type = "scenario_stress_test"
-            new_probe_count = 0
-    elif latest_evaluation.get("weak_points") and len(latest_evaluation.get("weak_points", [])) > 0:
-        if current_probe_count == 0:
-            routing_decision = "probe_deeper"
-            reasoning = f"Candidate scored {latest_score}/10 with specific weak points."
-            follow_up_goal = latest_evaluation.get("weak_points")[0]
-            follow_up_type = "deeper_tradeoffs"
-            new_probe_count = 1
-        else:
-            routing_decision = "simplify"
-            reasoning = f"Probing weak point for second time. Asking for real-world example."
-            follow_up_goal = "Real-world trade-off decision example."
-            follow_up_type = "real_world_example"
-            new_probe_count = 2
+    elif answer_status == "correct" or followup_strategy == "increase_depth" or latest_score >= 8:
+        routing_decision = "increase_difficulty"
+        reasoning = f"Candidate answered correctly (Score: {latest_score}/10). Advancing technical depth and scale."
+        follow_up_goal = "High-concurrency failure modes, 10,000 req/sec scale, and operational cost trade-offs."
+        follow_up_type = "increase_depth"
+        new_probe_count = 0
+    elif current_probe_count == 0:
+        routing_decision = "probe_deeper"
+        gap_text = knowledge_gaps[0] if knowledge_gaps else "missing trade-off detail"
+        reasoning = f"Candidate response partially correct with gap ({gap_text}). Probing missing concept."
+        follow_up_goal = f"Probe missing technical concept: {gap_text}"
+        follow_up_type = "probe_missing_concept"
+        new_probe_count = 1
     else:
         routing_decision = "next_topic"
-        reasoning = f"Candidate answered satisfactorily (Score: {latest_score}/10)."
+        reasoning = f"Completed probing on topic. Transitioning to next key area."
         follow_up_goal = "Production monitoring, metrics, and deployment observability."
         follow_up_type = "scenario_stress_test"
         new_probe_count = 0
+
 
     logger.info(f"Reflection Agent Decision: {routing_decision}. Probe count: {new_probe_count}. Goal: {follow_up_goal}")
     return {

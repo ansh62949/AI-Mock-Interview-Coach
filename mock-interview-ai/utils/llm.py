@@ -5,11 +5,26 @@ from config.settings import settings
 from utils.logger import logger
 
 
-def get_llm(temperature: Optional[float] = None) -> Optional[BaseChatModel]:
+def setup_langsmith_tracing() -> None:
+    """Configures LangSmith observability parameters safely without blocking execution."""
+    langsmith_key = os.getenv("LANGSMITH_API_KEY") or settings.langsmith_api_key
+    if langsmith_key and langsmith_key != "your_langsmith_api_key_here":
+        os.environ["LANGCHAIN_TRACING_V2"] = "true"
+        os.environ["LANGCHAIN_ENDPOINT"] = settings.langsmith_endpoint
+        os.environ["LANGCHAIN_API_KEY"] = langsmith_key
+        os.environ["LANGCHAIN_PROJECT"] = settings.langsmith_project
+        logger.info(f"LangSmith Tracing enabled for project '{settings.langsmith_project}'.")
+    else:
+        # Fail-safe non-blocking execution
+        os.environ["LANGCHAIN_TRACING_V2"] = "false"
+
+
+def get_llm(temperature: Optional[float] = None, timeout: Optional[float] = 15.0, max_retries: int = 1) -> Optional[BaseChatModel]:
     """
     Factory function returning configured LLM instance (Groq, OpenAI, or Gemini).
     Returns None if no API key is set, enabling offline fallback execution.
     """
+    setup_langsmith_tracing()
     model_temperature = settings.temperature if temperature is None else temperature
     
     groq_api_key = os.getenv("GROQ_API_KEY") or settings.groq_api_key
@@ -18,14 +33,16 @@ def get_llm(temperature: Optional[float] = None) -> Optional[BaseChatModel]:
 
     # Check for Groq API key first
     if groq_api_key and groq_api_key.startswith("gsk_"):
-        from langchain_openai import ChatOpenAI
-        model_name = settings.default_model if "llama" in settings.default_model or "mixtral" in settings.default_model else "llama-3.3-70b-versatile"
-        logger.info(f"Initializing Groq ChatOpenAI client with model '{model_name}'.")
-        return ChatOpenAI(
+        from langchain_groq import ChatGroq
+        model_name = settings.default_model if settings.default_model not in ["llama-3.3-70b-versatile", "llama3-8b-8192", "llama-3.1-8b-instant"] else "qwen/qwen3.8-27b"
+        logger.info(f"Initializing ChatGroq client with model '{model_name}'.")
+        return ChatGroq(
             model=model_name,
             temperature=model_temperature,
             api_key=groq_api_key,
-            base_url="https://api.groq.com/openai/v1"
+            max_tokens=800,
+            request_timeout=timeout,
+            max_retries=max_retries
         )
 
     # Check for standard OpenAI API key

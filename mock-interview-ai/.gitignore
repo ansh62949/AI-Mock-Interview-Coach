@@ -11,6 +11,11 @@ __pycache__/
 .env.local
 scratch/
 transcripts/
+*.log
+
+# Runtime Data & Persistence
+data/*.db
+data/chromadb/
 
 # Virtual Environments
 venv/
@@ -21,3 +26,4 @@ env/
 .vscode/
 .idea/
 *.swp
+

@@ -23,9 +23,8 @@ class SessionManager:
 
     def update_session(self, session_id: str, updated_state: InterviewState) -> None:
         """Persists updated state for an active session."""
-        if session_id in self._sessions:
-            self._sessions[session_id] = updated_state
-            logger.info(f"SessionManager: Updated session {session_id} (turn={updated_state.get('turn_count')}).")
+        self._sessions[session_id] = updated_state
+        logger.info(f"SessionManager: Updated session {session_id} (turn={updated_state.get('turn_count')}).")
 
 
 session_manager = SessionManager()
