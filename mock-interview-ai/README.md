@@ -29,6 +29,22 @@ A production-oriented AI SaaS platform built with **LangGraph**, **FastAPI**, **
 
 ---
 
+## 📸 Application Screenshots
+
+| 🏠 Resume & JD Setup | 📊 Match Analysis |
+| :---: | :---: |
+| ![Resume & JD Setup](../docs/screenshots/resume_jd_setup.png) | ![Match Analysis](../docs/screenshots/match_analysis.png) |
+
+| 🎯 6-Round Blueprint | 💬 Adaptive AI Interview |
+| :---: | :---: |
+| ![Interview Blueprint](../docs/screenshots/interview_blueprint.png) | ![Adaptive AI Interview](../docs/screenshots/active_interview.png) |
+
+| 📈 Category Progress | 📜 Session History |
+| :---: | :---: |
+| ![Category Progress](../docs/screenshots/progress.png) | ![Session History](../docs/screenshots/history.png) |
+
+---
+
 ## 🏛️ System Architecture
 
 ```mermaid
